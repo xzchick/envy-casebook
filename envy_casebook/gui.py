@@ -251,6 +251,9 @@ def _build():
             g.addWidget(self._tag("BODY / OBSERVATION"))
             self.f_body = QPlainTextEdit(); self.f_body.setObjectName("mono"); self.f_body.setMinimumHeight(90)
             g.addWidget(self.f_body, 1)
+            self.f_body_count = QLabel("0 words · 0 characters"); self.f_body_count.setObjectName("status")
+            self.f_body.textChanged.connect(self._update_body_count)
+            g.addWidget(self.f_body_count)
             self.obs_tag = self._tag("OBSERVED (UTC, ISO 8601 — e.g. 2026-11-06T14:00:00+00:00)")
             g.addWidget(self.obs_tag)
             self.f_obs = QLineEdit(); self.f_obs.setObjectName("field"); g.addWidget(self.f_obs)
@@ -275,6 +278,10 @@ def _build():
 
         def _tag(self, text):
             lab = QLabel(text); lab.setObjectName("tag"); return lab
+
+        def _update_body_count(self):
+            text = self.f_body.toPlainText()
+            self.f_body_count.setText(f"{len(text.split())} word(s) · {len(text)} character(s)")
 
         def _kind_changed(self):
             kind = self.kind.currentText()
