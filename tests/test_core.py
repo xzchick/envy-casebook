@@ -218,5 +218,33 @@ class CaseTest(unittest.TestCase):
         self.assertEqual(core.search(case, self.SECRET, "nothing-here")["matches"], 0)
 
 
+    # ----- stats (v0.2) -------------------------------------------------
+    def test_stats_summarizes_the_case(self):
+        p0 = self.new_case()
+        p1 = self.dir / "s1"
+        core.append_record(p0, p1, {"kind": "entity", "title": "Host A", "body": "two words"}, self.SECRET)
+        p2 = self.dir / "s2"
+        core.append_record(p1, p2, {"kind": "event", "title": "Boot", "observed_utc": "2026-01-05T00:00:00+00:00",
+                                    "provenance": [{"source": "/var/log/boot"}]}, self.SECRET)
+        p3 = self.dir / "s3"
+        core.append_record(p2, p3, {"kind": "event", "title": "Earlier",
+                                    "observed_utc": "2026-01-01T00:00:00+00:00"}, self.SECRET)
+        s = core.stats(p3, self.SECRET)
+        self.assertEqual(s["records"], 3)
+        self.assertEqual(s["by_kind"]["event"], 2)
+        self.assertEqual(s["by_kind"]["entity"], 1)
+        self.assertEqual(s["body_words"], 2)
+        self.assertEqual(s["provenance_sources"], 1)
+        self.assertEqual(s["events"]["count"], 2)
+        self.assertTrue(s["events"]["earliest_utc"].startswith("2026-01-01"))
+        self.assertTrue(s["events"]["latest_utc"].startswith("2026-01-05"))
+
+    def test_stats_empty_case(self):
+        s = core.stats(self.new_case(), self.SECRET)
+        self.assertEqual(s["records"], 0)
+        self.assertIsNone(s["events"]["earliest_utc"])
+        self.assertEqual(sum(s["by_kind"].values()), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -341,6 +341,34 @@ def search(source, secret, query, kinds=None):
                     "relationships, and record contents are operator assertions, not trusted facts."}
 
 
+def stats(source, secret):
+    """A read-only summary of the case: record counts by kind, body text totals,
+    provenance sources, references, and the span of event observation times."""
+    data, _ = _load(source, secret)
+    records = data["records"]
+    by_kind = {k: 0 for k in KINDS}
+    body_chars = body_words = provenance = references = 0
+    event_times = []
+    for r in records:
+        by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
+        body = r.get("body", "")
+        body_chars += len(body)
+        body_words += len(body.split())
+        provenance += len(r["provenance"])
+        references += len(r["references"])
+        if r["kind"] == "event" and r.get("observed_utc"):
+            event_times.append(r["observed_utc"])
+    event_times.sort()
+    return {"case_id": data["case_id"], "title": data["title"], "revision": data["revision"],
+            "records": len(records), "by_kind": by_kind,
+            "body_chars": body_chars, "body_words": body_words,
+            "provenance_sources": provenance, "references": references,
+            "events": {"count": len(event_times),
+                       "earliest_utc": event_times[0] if event_times else None,
+                       "latest_utc": event_times[-1] if event_times else None},
+            "note": "Counts only. Observation times and provenance are operator assertions, not trusted facts."}
+
+
 def graph_data(data, limit=160):
     """A bounded display model for asserted record links; it infers no relationships."""
     _validate_case(data)
