@@ -292,6 +292,55 @@ def timeline(source, secret):
             "time_basis": "Operator-provided UTC observation times, not trusted timestamps."}
 
 
+def _snippet(record, needle, width=80):
+    """A short window of context around the first title/body match, or empty."""
+    for text in (record["title"], record.get("body", "")):
+        low = text.lower()
+        i = low.find(needle)
+        if i >= 0:
+            start = max(0, i - width // 2)
+            end = min(len(text), i + len(needle) + width // 2)
+            piece = " ".join(text[start:end].split())
+            return ("…" if start > 0 else "") + piece + ("…" if end < len(text) else "")
+    return ""
+
+
+def search(source, secret, query, kinds=None):
+    """Case-insensitive substring search over record titles, bodies and provenance. Read-only.
+
+    It ranks nothing and infers no relationships; it only reports which records
+    contain the query text and where.
+    """
+    if not isinstance(query, str) or not query.strip():
+        raise CasebookError("Search needs a non-empty query")
+    needle = query.strip().lower()
+    if kinds is not None:
+        kinds = tuple(kinds)
+        if any(k not in KINDS for k in kinds):
+            raise CasebookError("Search kind must be note, entity, event, or link")
+    data, _ = _load(source, secret)
+    results = []
+    for r in data["records"]:
+        if kinds and r["kind"] not in kinds:
+            continue
+        matched = []
+        if needle in r["title"].lower():
+            matched.append("title")
+        if needle in r.get("body", "").lower():
+            matched.append("body")
+        if any(needle in s["source"].lower() or needle in s.get("note", "").lower()
+               for s in r["provenance"]):
+            matched.append("provenance")
+        if matched:
+            results.append({"id": r["id"], "kind": r["kind"], "title": r["title"],
+                            "observed_utc": r.get("observed_utc"), "matched_in": matched,
+                            "snippet": _snippet(r, needle)})
+    return {"case_id": data["case_id"], "title": data["title"], "query": query,
+            "kinds": list(kinds) if kinds else None, "matches": len(results), "records": results,
+            "note": "Substring match over decrypted record text. It ranks nothing, infers no "
+                    "relationships, and record contents are operator assertions, not trusted facts."}
+
+
 def graph_data(data, limit=160):
     """A bounded display model for asserted record links; it infers no relationships."""
     _validate_case(data)
