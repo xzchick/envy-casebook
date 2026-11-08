@@ -177,6 +177,46 @@ class CaseTest(unittest.TestCase):
         self.assertEqual(value["kind"], "event")
         self.assertIn("observed_utc", value)
 
+    # ----- search -------------------------------------------------------
+    def _searchable_case(self):
+        p0 = self.new_case()
+        p1 = self.dir / "s1"
+        core.append_record(p0, p1, {"kind": "entity", "title": "Raven laptop",
+                                    "body": "A silver machine seized at the scene"}, self.SECRET)
+        p2 = self.dir / "s2"
+        core.append_record(p1, p2, {"kind": "note", "title": "Interview",
+                                    "body": "Subject mentioned a USB drive",
+                                    "provenance": [{"source": "/evidence/raven-notes.txt",
+                                                    "note": "handwritten"}]}, self.SECRET)
+        return p2
+
+    def test_search_matches_title_body_and_provenance(self):
+        case = self._searchable_case()
+        res = core.search(case, self.SECRET, "raven")
+        self.assertEqual(res["matches"], 2)
+        by_kind = {r["kind"]: r for r in res["records"]}
+        self.assertIn("title", by_kind["entity"]["matched_in"])
+        self.assertIn("provenance", by_kind["note"]["matched_in"])
+        usb = core.search(case, self.SECRET, "usb drive")
+        self.assertEqual(usb["matches"], 1)
+        self.assertIn("body", usb["records"][0]["matched_in"])
+        self.assertIn("USB drive", usb["records"][0]["snippet"])
+
+    def test_search_is_case_insensitive_and_can_filter_kind(self):
+        case = self._searchable_case()
+        self.assertEqual(core.search(case, self.SECRET, "INTERVIEW")["matches"], 1)
+        only_entity = core.search(case, self.SECRET, "raven", kinds=["entity"])
+        self.assertEqual(only_entity["matches"], 1)
+        self.assertEqual(only_entity["records"][0]["kind"], "entity")
+
+    def test_search_rejects_empty_query_and_unknown_kind(self):
+        case = self._searchable_case()
+        with self.assertRaises(core.CasebookError):
+            core.search(case, self.SECRET, "   ")
+        with self.assertRaises(core.CasebookError):
+            core.search(case, self.SECRET, "raven", kinds=["bogus"])
+        self.assertEqual(core.search(case, self.SECRET, "nothing-here")["matches"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

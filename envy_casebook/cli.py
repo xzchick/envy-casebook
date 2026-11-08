@@ -12,7 +12,7 @@ import sys
 
 from . import __version__
 from .core import (CasebookError, append, check_passphrase, create, export, inspect,
-                   template, timeline)
+                   search, template, timeline)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     tl = commands.add_parser("timeline", help="print event records in UTC order (read-only)")
     tl.add_argument("source")
+
+    se = commands.add_parser("search", help="full-text search over titles, bodies and provenance (read-only)")
+    se.add_argument("source")
+    se.add_argument("query", help="the text to search for (case-insensitive)")
+    se.add_argument("--kind", action="append", choices=("note", "entity", "event", "link"),
+                    help="limit to a record kind; repeat to allow several")
 
     exp = commands.add_parser("export", help="write a plaintext HTML or JSON report")
     exp.add_argument("source")
@@ -83,6 +89,10 @@ def _run(args) -> int:
     if args.command == "timeline":
         print(json.dumps(timeline(args.source, _passphrase()), indent=2, ensure_ascii=False))
         return 0
+    if args.command == "search":
+        result = search(args.source, _passphrase(), args.query, args.kind)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["matches"] else 1
     return 0
 
 
