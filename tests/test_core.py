@@ -246,5 +246,29 @@ class CaseTest(unittest.TestCase):
         self.assertEqual(sum(s["by_kind"].values()), 0)
 
 
+    # ----- Markdown export (v0.2) --------------------------------------
+    def test_export_markdown(self):
+        p0 = self.new_case(title="Night shift")
+        p1 = self.dir / "r1"
+        core.append_record(p0, p1, {"kind": "note", "title": "First note",
+                                    "body": "a body with ``` fenced text inside",
+                                    "provenance": [{"source": "/evidence/x", "note": "seized"}]}, self.SECRET)
+        out = self.dir / "r.md"
+        res = core.export(p1, out, self.SECRET, "md")
+        self.assertEqual(res["format"], "md")
+        text = out.read_text()
+        self.assertTrue(text.startswith("# Night shift"))
+        self.assertIn("## First note", text)
+        self.assertIn("`note`", text)
+        self.assertIn("a body with ``` fenced text inside", text)   # reproduced verbatim
+        self.assertIn("````", text)                                 # fence longer than the inner run
+        self.assertIn("/evidence/x", text)
+
+    def test_export_markdown_empty_case(self):
+        out = self.dir / "e.md"
+        core.export(self.new_case(), out, self.SECRET, "md")
+        self.assertIn("_No records._", out.read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

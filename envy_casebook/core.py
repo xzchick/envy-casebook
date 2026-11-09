@@ -409,9 +409,19 @@ def graph_from(source, secret, limit=160):
     return graph_data(data, limit)
 
 
+def _md_fence(text):
+    """A backtick fence longer than any run of backticks in the text, so a body is
+    reproduced verbatim and cannot break out into Markdown."""
+    run = longest = 0
+    for ch in text:
+        run = run + 1 if ch == "`" else 0
+        longest = max(longest, run)
+    return "`" * max(3, longest + 1)
+
+
 def export(source, destination, secret, format="html"):
-    if format not in ("html", "json"):
-        raise CasebookError("Export format must be html or json")
+    if format not in ("html", "json", "md"):
+        raise CasebookError("Export format must be html, json or md")
     data, envelope_hash = _load(source, secret)
     report = {"casebook": data, "envelope_sha256": envelope_hash,
               "limitations": "Plaintext export. Local timestamps, operator assertions, and hash links do "
@@ -419,6 +429,36 @@ def export(source, destination, secret, format="html"):
                              "retain a separate report checkpoint."}
     if format == "json":
         output = (json.dumps(report, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    elif format == "md":
+        lines = [f"# {data['title']}", "", report["limitations"], "",
+                 f"- **Case:** `{data['case_id']}`",
+                 f"- **Revision:** {data['revision']}",
+                 f"- **Encrypted source SHA-256:** `{envelope_hash}`", ""]
+        if not data["records"]:
+            lines.append("_No records._")
+        for record in data["records"]:
+            lines.append(f"## {record['title']}")
+            meta = f"`{record['kind']}` · `{record['id']}`"
+            if record.get("observed_utc"):
+                meta += f" · observed {record['observed_utc']}"
+            lines += [meta, ""]
+            body = record.get("body", "")
+            if body:
+                fence = _md_fence(body)
+                lines += [fence, body, fence, ""]
+            if record["references"]:
+                lines.append("**References:** " + ", ".join(f"`{ref}`" for ref in record["references"]))
+            if record["provenance"]:
+                lines.append("**Provenance:**")
+                for item in record["provenance"]:
+                    entry = f"- {item['source']}"
+                    if item.get("note"):
+                        entry += f" — {item['note']}"
+                    if item.get("sha256"):
+                        entry += f" (SHA-256: `{item['sha256']}`)"
+                    lines.append(entry)
+            lines += ["", f"_Record SHA-256:_ `{record['record_sha256']}`", ""]
+        output = ("\n".join(lines) + "\n").encode("utf-8")
     else:
         def esc(value):
             return html.escape(str(value), quote=True)
