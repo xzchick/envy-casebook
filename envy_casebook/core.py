@@ -26,6 +26,7 @@ MAGIC = b"ENVYVAULT2\x00"
 MAX_ENVELOPE = 8 * 1024 * 1024
 MAX_RECORD = 128 * 1024
 MAX_RECORDS = 1000
+MAX_ATTACHMENT = 256 * 1024 * 1024
 MIN_PASSPHRASE = 12
 KINDS = ("note", "entity", "event", "link")
 
@@ -266,6 +267,48 @@ def append_record(source, destination, value, secret):
     data["previous_envelope_sha256"] = previous_envelope
     result = _write(destination, data, secret)
     return dict(result, added_record_id=record["id"], input_preserved=True)
+
+
+def _hash_file(path, limit=MAX_ATTACHMENT):
+    """Stream the SHA-256 and size of a regular file, refusing symlinks, without loading
+    it all into memory or copying it anywhere."""
+    path = Path(path).expanduser()
+    try:
+        fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        raise CasebookError("Attachment must be an existing regular file (symlinks are refused)") from None
+    with os.fdopen(fd, "rb") as stream:
+        meta = os.fstat(stream.fileno())
+        if not stat.S_ISREG(meta.st_mode) or meta.st_size > limit:
+            raise CasebookError("Expected a regular file within the size limit")
+        digest, size = hashlib.sha256(), 0
+        while True:
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def attach(source, destination, secret, file_path, title=None, note=""):
+    """Reference an external file by its SHA-256 — copying nothing into the case.
+
+    Hashes the file and appends a note record whose provenance carries the filename and
+    digest, so the case records *that* a file existed and its fingerprint, without ever
+    storing its contents. The case can later be checked against the file by re-hashing it.
+    """
+    digest, size = _hash_file(file_path)
+    name = Path(file_path).name or "attachment"
+    provenance = {"source": str(Path(file_path).expanduser()), "sha256": digest}
+    if note:
+        provenance["note"] = note
+    value = {"kind": "note", "title": title or name,
+             "body": f"External attachment referenced by SHA-256 — the file is not copied into the "
+                     f"case. {size} bytes.",
+             "provenance": [provenance]}
+    result = append_record(source, destination, value, secret)
+    return dict(result, sha256=digest, size=size, filename=name)
 
 
 def inspect(source, secret):
