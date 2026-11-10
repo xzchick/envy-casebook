@@ -273,6 +273,10 @@ def _hash_file(path, limit=MAX_ATTACHMENT):
     """Stream the SHA-256 and size of a regular file, refusing symlinks, without loading
     it all into memory or copying it anywhere."""
     path = Path(path).expanduser()
+    # Refuse symlinks on every platform: O_NOFOLLOW is POSIX-only (absent on Windows),
+    # so check explicitly first, then still pass O_NOFOLLOW where it exists.
+    if path.is_symlink():
+        raise CasebookError("Attachment must be a regular file, not a symlink")
     try:
         fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     except OSError:
