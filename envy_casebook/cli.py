@@ -49,6 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     tl = commands.add_parser("timeline", help="print event records in UTC order (read-only)")
     tl.add_argument("source")
+    tl.add_argument("--since", default=None, metavar="DATE",
+                    help="only events on or after this ISO date/UTC datetime")
+    tl.add_argument("--until", default=None, metavar="DATE",
+                    help="only events on or before this ISO date (a bare date covers the whole day)")
 
     se = commands.add_parser("search", help="full-text search over titles, bodies and provenance (read-only)")
     se.add_argument("source")
@@ -104,7 +108,8 @@ def _run(args) -> int:
         print(json.dumps(inspect(args.source, _passphrase()), indent=2, ensure_ascii=False))
         return 0
     if args.command == "timeline":
-        print(json.dumps(timeline(args.source, _passphrase()), indent=2, ensure_ascii=False))
+        print(json.dumps(timeline(args.source, _passphrase(), since=args.since, until=args.until),
+                         indent=2, ensure_ascii=False))
         return 0
     if args.command == "search":
         result = search(args.source, _passphrase(), args.query, args.kind)

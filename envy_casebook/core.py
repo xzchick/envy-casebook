@@ -324,11 +324,43 @@ def inspect(source, secret):
                        "provenance are operator assertions, not trusted facts."}
 
 
-def timeline(source, secret):
+def _parse_bound(value, field, end=False):
+    """Parse a `since`/`until` filter: an ISO date (YYYY-MM-DD) or UTC datetime. A bare
+    date anchors to UTC midnight, and as an `until` bound it covers the whole day."""
+    raw = _text(value, field, 64).replace("Z", "+00:00")
+    try:
+        parsed = datetime.datetime.fromisoformat(raw)
+    except ValueError:
+        raise CasebookError(f"{field} must be an ISO 8601 date or UTC datetime") from None
+    if parsed.tzinfo is None:
+        if len(raw) == 10 and end:                       # a bare YYYY-MM-DD end bound
+            parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999999)
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    elif parsed.utcoffset() != datetime.timedelta(0):
+        raise CasebookError(f"{field} must be in UTC (+00:00 or Z)")
+    return parsed
+
+
+def timeline(source, secret, since=None, until=None):
+    """Event records in UTC order, optionally filtered to a date window. Read-only.
+
+    ``since`` and ``until`` are inclusive ISO dates or UTC datetimes; a bare ``until``
+    date covers the whole day.
+    """
     data, _ = _load(source, secret)
+    lo = _parse_bound(since, "since") if since else None
+    hi = _parse_bound(until, "until", end=True) if until else None
+    if lo and hi and lo > hi:
+        raise CasebookError("since must not be after until")
     records = [r for r in data["records"] if r["kind"] == "event"]
+    if lo or hi:
+        def observed(r):
+            return datetime.datetime.fromisoformat(r["observed_utc"].replace("Z", "+00:00"))
+        records = [r for r in records
+                   if (lo is None or observed(r) >= lo) and (hi is None or observed(r) <= hi)]
     records.sort(key=lambda r: (r["observed_utc"], r["id"]))
     return {"case_id": data["case_id"], "title": data["title"],
+            "since": lo.isoformat() if lo else None, "until": hi.isoformat() if hi else None,
             "events": [{"id": r["id"], "title": r["title"], "observed_utc": r["observed_utc"],
                         "references": r["references"], "provenance": r["provenance"]}
                        for r in records],

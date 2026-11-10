@@ -45,6 +45,32 @@ class CaseTest(unittest.TestCase):
         # The file's bytes are not stored anywhere in the encrypted case.
         self.assertNotIn(payload[:40], core.decrypt_bytes(r1.read_bytes(), self.SECRET))
 
+    def test_timeline_date_filtering(self):
+        p = self.new_case()
+        def add_event(src, dst, title, when):
+            return core.append_record(src, dst, {"kind": "event", "title": title,
+                                                 "observed_utc": when}, self.SECRET)["output"]
+        p = add_event(p, self.dir / "e1", "jan", "2026-01-10T00:00:00+00:00")
+        p = add_event(p, self.dir / "e2", "feb", "2026-02-15T12:00:00+00:00")
+        p = add_event(p, self.dir / "e3", "mar", "2026-03-20T00:00:00+00:00")
+        # No filter -> all three, in order.
+        self.assertEqual([e["title"] for e in core.timeline(p, self.SECRET)["events"]],
+                         ["jan", "feb", "mar"])
+        # since (inclusive).
+        self.assertEqual([e["title"] for e in core.timeline(p, self.SECRET, since="2026-02-01")["events"]],
+                         ["feb", "mar"])
+        # until as a bare date covers the whole day (the Feb event is at noon).
+        self.assertEqual([e["title"] for e in core.timeline(p, self.SECRET, until="2026-02-15")["events"]],
+                         ["jan", "feb"])
+        # window.
+        self.assertEqual([e["title"] for e in
+                          core.timeline(p, self.SECRET, since="2026-02-01", until="2026-02-28")["events"]],
+                         ["feb"])
+        with self.assertRaises(CasebookError):
+            core.timeline(p, self.SECRET, since="2026-03-01", until="2026-01-01")
+        with self.assertRaises(CasebookError):
+            core.timeline(p, self.SECRET, since="not-a-date")
+
     def test_attach_refuses_symlink(self):
         case = self.new_case()
         target = self.dir / "real.bin"; target.write_bytes(b"x")
