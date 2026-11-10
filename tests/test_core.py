@@ -24,6 +24,38 @@ class CaseTest(unittest.TestCase):
         core.create(path, title, self.SECRET)
         return path
 
+    def test_attach_records_sha256_without_copying(self):
+        import hashlib
+        case = self.new_case()
+        payload = b"external evidence file contents\n" * 100
+        ext = self.dir / "evidence.bin"
+        ext.write_bytes(payload)
+        expected = hashlib.sha256(payload).hexdigest()
+        r1 = self.dir / "r1"
+        res = core.attach(case, r1, self.SECRET, ext, note="chain item 1")
+        self.assertEqual(res["sha256"], expected)
+        self.assertEqual(res["size"], len(payload))
+        data, _ = core._load(r1, self.SECRET)
+        rec = data["records"][-1]
+        self.assertEqual(rec["kind"], "note")
+        self.assertEqual(rec["title"], "evidence.bin")
+        prov = rec["provenance"][0]
+        self.assertEqual(prov["sha256"], expected)
+        self.assertEqual(prov["note"], "chain item 1")
+        # The file's bytes are not stored anywhere in the encrypted case.
+        self.assertNotIn(payload[:40], core.decrypt_bytes(r1.read_bytes(), self.SECRET))
+
+    def test_attach_refuses_symlink(self):
+        case = self.new_case()
+        target = self.dir / "real.bin"; target.write_bytes(b"x")
+        link = self.dir / "link.bin"
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable")
+        with self.assertRaises(CasebookError):
+            core.attach(case, self.dir / "r1", self.SECRET, link)
+
     # ----- envelope -----------------------------------------------------
     def test_encrypted_round_trip_and_magic(self):
         blob = core.encrypt_bytes(b"secret notes", self.SECRET)

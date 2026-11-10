@@ -11,7 +11,7 @@ import json
 import sys
 
 from . import __version__
-from .core import (CasebookError, append, check_passphrase, create, export, inspect,
+from .core import (CasebookError, append, attach, check_passphrase, create, export, inspect,
                    search, stats, template, timeline)
 
 
@@ -36,6 +36,13 @@ def build_parser() -> argparse.ArgumentParser:
     tmpl = commands.add_parser("template", help="write a blank record template to edit")
     tmpl.add_argument("destination", help="a new JSON file; never overwritten")
     tmpl.add_argument("--kind", default="note", choices=("note", "entity", "event", "link"))
+
+    at = commands.add_parser("attach", help="reference an external file by its SHA-256 (no file copied in)")
+    at.add_argument("source", help="the current encrypted case")
+    at.add_argument("destination", help="a new file for the next revision; never overwritten")
+    at.add_argument("file", help="the external file to hash and reference (not copied in)")
+    at.add_argument("--title", default=None, help="a label for the attachment (defaults to the filename)")
+    at.add_argument("--note", default="", help="an optional provenance note")
 
     insp = commands.add_parser("inspect", help="print the decrypted records (read-only)")
     insp.add_argument("source")
@@ -81,6 +88,13 @@ def _run(args) -> int:
     if args.command == "add":
         result = append(args.source, args.destination, args.record, _passphrase())
         print(f"added record {result['added_record_id']} → {result['output']} (revision {result['revision']})")
+        return 0
+    if args.command == "attach":
+        result = attach(args.source, args.destination, _passphrase(), args.file,
+                        title=args.title, note=args.note)
+        print(f"attached {result['filename']} ({result['size']} bytes) sha256 {result['sha256']} "
+              f"→ {result['output']} (revision {result['revision']})")
+        print("The file was not copied into the case — only its SHA-256 was recorded.")
         return 0
     if args.command == "export":
         result = export(args.source, args.destination, _passphrase(), args.format)
