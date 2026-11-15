@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "envy-casebook"
-version = "0.1.0"
+version = "0.2.0"
 description = "ENVY Casebook: offline, encrypted, revision-preserving case notes in a native app window"
 readme = "README.md"
 requires-python = ">=3.10"
